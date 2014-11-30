@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/go-martini/martini"
-	"golang.org/x/oauth2"
 	"github.com/martini-contrib/sessions"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -56,10 +56,12 @@ type Tokens interface {
 	Refresh() string
 	Expired() bool
 	ExpiryTime() time.Time
+	ProviderName() string
 }
 
 type token struct {
 	oauth2.Token
+	providerName string
 }
 
 // Access returns the access token.
@@ -90,12 +92,17 @@ func (t *token) String() string {
 	return fmt.Sprintf("tokens: %v", t)
 }
 
+// String returns the providerName
+func (t *token) ProviderName() string {
+	return t.providerName
+}
+
 // Google returns a new Google OAuth 2.0 backend endpoint.
 func Google(opt ...oauth2.Option) martini.Handler {
 	return NewOAuth2Provider(append(opt, oauth2.Endpoint(
 		"https://accounts.google.com/o/oauth2/auth",
 		"https://accounts.google.com/o/oauth2/token"),
-	))
+	), "Google")
 }
 
 // Github returns a new Github OAuth 2.0 backend endpoint.
@@ -103,25 +110,25 @@ func Github(opt ...oauth2.Option) martini.Handler {
 	return NewOAuth2Provider(append(opt, oauth2.Endpoint(
 		"https://github.com/login/oauth/authorize",
 		"https://github.com/login/oauth/access_token"),
-	))
+	), "Github")
 }
 
 func Facebook(opt ...oauth2.Option) martini.Handler {
 	return NewOAuth2Provider(append(opt, oauth2.Endpoint(
 		"https://www.facebook.com/dialog/oauth",
 		"https://graph.facebook.com/oauth/access_token"),
-	))
+	), "Facebook")
 }
 
 func LinkedIn(opt ...oauth2.Option) martini.Handler {
 	return NewOAuth2Provider(append(opt, oauth2.Endpoint(
 		"https://www.linkedin.com/uas/oauth2/authorization",
 		"https://www.linkedin.com/uas/oauth2/accessToken"),
-	))
+	), "LinkedIn")
 }
 
 // NewOAuth2Provider returns a generic OAuth 2.0 backend endpoint.
-func NewOAuth2Provider(opts []oauth2.Option) martini.Handler {
+func NewOAuth2Provider(opts []oauth2.Option, providerName string) martini.Handler {
 	f, err := oauth2.New(opts...)
 	if err != nil {
 		// TODO(jbd): Don't panic.
@@ -145,6 +152,8 @@ func NewOAuth2Provider(opts []oauth2.Option) martini.Handler {
 			if tk.Expired() && tk.Refresh() == "" {
 				s.Delete(keyToken)
 				tk = nil
+			} else {
+				tk.providerName = providerName
 			}
 		}
 		// Inject tokens.
@@ -209,7 +218,7 @@ func unmarshallToken(s sessions.Session) (t *token) {
 	data := s.Get(keyToken).([]byte)
 	var tk oauth2.Token
 	json.Unmarshal(data, &tk)
-	return &token{tk}
+	return &token{tk, ""}
 }
 
 func extractPath(next string) string {
